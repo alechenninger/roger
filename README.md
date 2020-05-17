@@ -12,7 +12,7 @@ change. Additionally, there is no built-in tracking of where you left off. If yo
 
 * Want your listener to be HA/redundant across multiple processes
 * Do not want to process each change redundantly for each process
-* Want to process chnges in order
+* Want to process changes in order
 
 ...then what you want is a queue!
 
