@@ -21,4 +21,4 @@ change. Additionally, there is no built-in tracking of where you left off. If yo
 
 To do this we use a locking algorithm that coordinates multiple listeners.
 
-For more information, see this blog post (COMING SOONg).
+For more information, see this blog post (COMING SOON).
