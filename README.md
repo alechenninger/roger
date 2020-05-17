@@ -17,7 +17,7 @@ change. Additionally, there is no built-in tracking of where you left off. If yo
 ...then what you want is a queue!
 
 > **NOTE:** This library implements _at least once_ guaranteed delivery, which means it is still 
-> possible for a message to be "heard" and processed more than once.
+> possible for a change to be "heard" and processed more than once.
 
 To do this we use a locking algorithm that coordinates multiple listeners.
 
