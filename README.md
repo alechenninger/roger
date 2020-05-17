@@ -11,8 +11,8 @@ Normally, listening to a change stream is more like a topic–that is, each list
 change. Additionally, there is no built-in tracking of where you left off. If you...
 
 * Want your listener to be HA/redundant across multiple processes
-* Do not want to process each message redundantly for each process
-* Want to process messages in order
+* Do not want to process each change redundantly for each process
+* Want to process chnges in order
 
 ...then what you want is a queue!
 
