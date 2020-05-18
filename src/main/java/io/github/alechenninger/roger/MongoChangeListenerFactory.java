@@ -5,8 +5,9 @@ import com.mongodb.client.MongoDatabase;
 import com.mongodb.client.model.changestream.UpdateDescription;
 import org.bson.BsonDocument;
 import org.bson.BsonDocumentReader;
-import org.bson.BsonTimestamp;
 import org.bson.codecs.DecoderContext;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.Closeable;
 import java.time.Clock;
@@ -19,6 +20,8 @@ public class MongoChangeListenerFactory {
   private final RefreshStrategy refreshStrategy;
   private final Duration maxAwaitTime;
   private final MongoListenerLockService lock;
+
+  private static final Logger log = LoggerFactory.getLogger(MongoChangeListenerFactory.class);
 
   public MongoChangeListenerFactory(Duration leaseTime, RefreshStrategy refreshStrategy,
       Duration maxAwaitTime, MongoListenerLockService lockService) {
@@ -46,6 +49,8 @@ public class MongoChangeListenerFactory {
           if (change.getFullDocument() == null) {
             UpdateDescription update = change.getUpdateDescription();
             if (update == null) {
+              log.info("Change had neither full document, nor update description; " +
+                  "nothing to process. change={}", change);
               return;
             }
             BsonDocumentReader reader = new BsonDocumentReader(update.getUpdatedFields());

@@ -13,10 +13,8 @@ import javax.annotation.Nullable;
 import java.io.Closeable;
 import java.io.IOException;
 import java.time.Duration;
-import java.util.NoSuchElementException;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -64,12 +62,15 @@ public class MongoChangeListener<T> implements Closeable {
               .orElse(null));
 
       if (offset == null) {
+        log.info("No operation to start or resume from; cannot safely start listener");
         return;
       }
 
       startOrContinueListening(offset);
     } else {
-      stopListening();
+      if (stopListening()) {
+        log.warn("Lost lock, listener stopped");
+      }
     }
   }
 
@@ -79,12 +80,13 @@ public class MongoChangeListener<T> implements Closeable {
    *
    * <p>Once stopped, may be resumed by {@link #startOrRefresh()}.
    */
-  private synchronized void stopListening() {
-    running.set(false);
+  private synchronized boolean stopListening() {
+    boolean wasRunnning = running.getAndSet(false);
     if (listener != null) {
       listener.cancel(true);
       listener = null;
     }
+    return wasRunnning;
   }
 
   interface ChangeOffset {
@@ -103,6 +105,13 @@ public class MongoChangeListener<T> implements Closeable {
     public void configure(ChangeStreamIterable<?> stream) {
       stream.resumeAfter(resumeToken);
     }
+
+    @Override
+    public String toString() {
+      return "ResumeTokenOffset{" +
+          "resumeToken=" + resumeToken +
+          '}';
+    }
   }
 
   static class OperationTimeOffset implements ChangeOffset {
@@ -117,6 +126,13 @@ public class MongoChangeListener<T> implements Closeable {
     public void configure(ChangeStreamIterable<?> stream) {
       stream.startAtOperationTime(time);
     }
+
+    @Override
+    public String toString() {
+      return "OperationTimeOffset{" +
+          "time=" + time +
+          '}';
+    }
   }
 
   private synchronized void startOrContinueListening(ChangeOffset offset) {
@@ -128,6 +144,8 @@ public class MongoChangeListener<T> implements Closeable {
           // Callbacks need to account for these races themselves, and there is no way around that.
           // This is simply an optimization.
           if (running.compareAndSet(false, true)) {
+            log.info("Starting change listener with offset {}", offset);
+
             ChangeStreamIterable<T> stream = collection
                 .watch()
                 .maxAwaitTime(maxAwaitTime.toMillis(), TimeUnit.MILLISECONDS);
@@ -141,13 +159,18 @@ public class MongoChangeListener<T> implements Closeable {
                 ChangeStreamDocument<T> change = cursor.next();
 
                 if (!running.get()) {
-                  // TODO: log
+                  log.info("Got change but lost lock; aborting change processing");
                   break;
                 }
+
+                log.debug("Accepting change {}", change);
 
                 callback.accept(change);
 
                 MongoResumeToken newResumeToken = new MongoResumeToken(change.getResumeToken());
+
+                log.debug("Change processed, committing new resume position {}", newResumeToken);
+
                 lock.commit(collectionNamespace, newResumeToken);
               } catch (LostLockException e) {
                 log.warn("Lost lock while listening to change", e);

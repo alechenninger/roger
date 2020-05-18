@@ -3,6 +3,7 @@ package io.github.alechenninger.roger;
 import static org.hamcrest.Matchers.contains;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.hasSize;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 import com.google.common.collect.ImmutableMap;
 import com.mongodb.client.MongoCollection;
@@ -15,6 +16,7 @@ import io.github.alechenninger.roger.testing.MongoDb;
 import org.awaitility.Awaitility;
 import org.bson.BsonDocument;
 import org.bson.Document;
+import org.bson.codecs.pojo.annotations.BsonId;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
@@ -96,13 +98,14 @@ class MongoChangeListenerTest {
     ChangeConsumer<TestDoc> logIt = log::add;
 
     final MongoCollection<TestDoc> collection = db.getCollection("test", TestDoc.class);
-    TestDoc testDoc = new TestDoc();
-    testDoc._id = "test";
+    TestDoc testDoc = new TestDoc("test", null);
     collection.insertOne(testDoc);
 
     closer.closeItAfterTest(listenerFactory.onChangeTo(collection, logIt, earliestOplogEntry));
 
     final UpdateResult result = collection.updateOne(Filters.eq("_id", "test"), Updates.set("foo", "bar"));
+
+    assertNotNull(result);
 
     Awaitility.await()
         .atMost(Duration.ofSeconds(5))
@@ -150,6 +153,7 @@ class MongoChangeListenerTest {
   }
 
   public static class TestDoc {
+
     String _id = UUID.randomUUID().toString();
     String foo;
 
@@ -160,6 +164,7 @@ class MongoChangeListenerTest {
       this.foo = foo;
     }
 
+    @BsonId
     public String get_id() {
       return _id;
     }
