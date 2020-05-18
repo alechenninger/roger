@@ -9,7 +9,6 @@ import com.mongodb.client.MongoClient;
 import com.mongodb.client.MongoClients;
 import com.mongodb.client.MongoDatabase;
 import org.bson.codecs.configuration.CodecRegistry;
-import org.bson.codecs.pojo.Conventions;
 import org.bson.codecs.pojo.PojoCodecProvider;
 import org.junit.jupiter.api.extension.AfterAllCallback;
 import org.junit.jupiter.api.extension.BeforeAllCallback;
@@ -29,10 +28,7 @@ public class MongoDb implements BeforeAllCallback, AfterAllCallback {
   private static final CodecRegistry pojoCodecRegistry =
       fromRegistries(
           MongoClientSettings.getDefaultCodecRegistry(),
-          fromProviders(PojoCodecProvider.builder()
-              .conventions(Conventions.DEFAULT_CONVENTIONS)
-              .automatic(true)
-              .build()));
+          fromProviders(PojoCodecProvider.builder().automatic(true).build()));
 
   public static MongoDb replicaSet() {
     return new MongoDb();
