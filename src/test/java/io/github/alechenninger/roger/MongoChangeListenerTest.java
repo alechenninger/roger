@@ -3,7 +3,7 @@ package io.github.alechenninger.roger;
 import static org.hamcrest.Matchers.contains;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.hasSize;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import com.google.common.collect.ImmutableMap;
 import com.mongodb.client.MongoCollection;
@@ -68,7 +68,7 @@ class MongoChangeListenerTest {
 
     final MongoCollection<TestDoc> collection = db.getCollection("test", TestDoc.class);
     closer.closeItAfterTest(listenerFactory.onChangeTo(collection, logIt, earliestOplogEntry));
-    collection.insertOne(new TestDoc());
+    collection.insertOne(TestDoc.randomId());
 
     Awaitility.await().atMost(Duration.ofSeconds(5)).until(() -> log, hasSize(1));
   }
@@ -105,7 +105,7 @@ class MongoChangeListenerTest {
 
     final UpdateResult result = collection.updateOne(Filters.eq("_id", "test"), Updates.set("foo", "bar"));
 
-    assertNotNull(result);
+    assertEquals(1, result.getModifiedCount());
 
     Awaitility.await()
         .atMost(Duration.ofSeconds(5))
@@ -153,24 +153,26 @@ class MongoChangeListenerTest {
   }
 
   public static class TestDoc {
-
-    String _id = UUID.randomUUID().toString();
-    String foo;
+    private String id;
+    private String foo;
 
     public TestDoc() {}
 
+    public static TestDoc randomId() {
+      return new TestDoc(UUID.randomUUID().toString(), null);
+    }
+
     public TestDoc(String id, String foo) {
-      this._id = id;
+      this.id = id;
       this.foo = foo;
     }
 
-    @BsonId
-    public String get_id() {
-      return _id;
+    public String getId() {
+      return id;
     }
 
-    public void set_id(String _id) {
-      this._id = _id;
+    public void setId(String _id) {
+      this.id = _id;
     }
 
     public String getFoo() {
@@ -188,13 +190,13 @@ class MongoChangeListenerTest {
 
       TestDoc testDoc = (TestDoc) o;
 
-      if (_id != null ? !_id.equals(testDoc._id) : testDoc._id != null) return false;
+      if (id != null ? !id.equals(testDoc.id) : testDoc.id != null) return false;
       return foo != null ? foo.equals(testDoc.foo) : testDoc.foo == null;
     }
 
     @Override
     public int hashCode() {
-      int result = _id != null ? _id.hashCode() : 0;
+      int result = id != null ? id.hashCode() : 0;
       result = 31 * result + (foo != null ? foo.hashCode() : 0);
       return result;
     }
@@ -202,7 +204,7 @@ class MongoChangeListenerTest {
     @Override
     public String toString() {
       return "TestDoc{" +
-          "_id='" + _id + '\'' +
+          "id='" + id + '\'' +
           ", foo='" + foo + '\'' +
           '}';
     }
