@@ -14,10 +14,15 @@ Where do we pick up from the change stream though? There is no way really unless
 contains a corresponding resume token (or timestamp? if logical timestamp), and the token is 
 sortable, so we can know which change was not already observed.
 
-It also of course throws out the order relationships between documents themselves.
+I suppose if you work from a static backup that is not accepting writes, you can use the existing
+documents to replay "changes", and the existing oplog to know when to pick back up, by timestamp.
+The timestamp isn't as reliable as a resume token though, I imagine.
+
+Either way this throws out the order relationships between documents themselves.
 
 We can consider integrating our application such that each process does not accept writes until its
-listener has started. However, there is a race condition here: 
+listener has started (that is, ensure our listener is started before "the beginning of time"). 
+However, there is a race condition here: 
 
 | time | operation |
 |------|-----------|
@@ -77,7 +82,8 @@ no resync solution I'm aware of (perhaps we could reverse engineer what replica 
 case). 
 
 However, this also may be brittle; I'm not sure if the oplog schema is guaranteed to be stable. They
-created change streams so we could stop looking at the oplog after all ^_^.
+created change streams so we could stop looking at the oplog after all ^_^. That said it is easy to 
+test for should it break.
 
 A naive approach still has a race condition, a possible phantom read:
 

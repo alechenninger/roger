@@ -5,6 +5,7 @@ import com.mongodb.client.MongoDatabase;
 import com.mongodb.client.model.changestream.UpdateDescription;
 import org.bson.BsonDocument;
 import org.bson.BsonDocumentReader;
+import org.bson.BsonTimestamp;
 import org.bson.codecs.DecoderContext;
 
 import java.io.Closeable;
@@ -37,7 +38,8 @@ public class MongoChangeListenerFactory {
         Duration.ofMinutes(5)));
   }
 
-  public <T> Closeable onChangeTo(MongoCollection<T> collection, Consumer<T> callback) {
+  public <T> Closeable onChangeTo(MongoCollection<T> collection, Consumer<T> callback,
+      StartOperationTime startOperationTime) {
     MongoChangeListener<T> listener = new MongoChangeListener<>(
         lock,
         change -> {
@@ -56,16 +58,10 @@ public class MongoChangeListenerFactory {
           }
         },
         maxAwaitTime,
-        collection);
+        collection,
+        startOperationTime);
 
     refreshStrategy.scheduleInBackground(listener::startOrRefresh, leaseTime);
-
-    try {
-      listener.awaitInitialization();
-    } catch (InterruptedException e) {
-      throw new RuntimeException(
-          "Interrupted while waiting for listener initialization", e);
-    }
 
     return listener;
   }

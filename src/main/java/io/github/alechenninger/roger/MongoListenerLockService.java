@@ -10,6 +10,8 @@ import static com.mongodb.client.model.Projections.include;
 import static com.mongodb.client.model.Updates.combine;
 import static com.mongodb.client.model.Updates.set;
 
+import com.mongodb.ErrorCategory;
+import com.mongodb.MongoCommandException;
 import com.mongodb.client.MongoCollection;
 import com.mongodb.client.MongoDatabase;
 import com.mongodb.client.model.FindOneAndUpdateOptions;
@@ -17,6 +19,8 @@ import com.mongodb.client.model.ReturnDocument;
 import io.github.alechenninger.roger.MongoChangeListener.MongoResumeToken;
 import org.bson.BsonDocument;
 import org.bson.conversions.Bson;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.time.Clock;
 import java.time.Duration;
@@ -28,6 +32,8 @@ public class MongoListenerLockService {
   private final MongoCollection<BsonDocument> collection;
   private final String listenerId;
   private final Duration leaseTime;
+
+  private static final Logger log = LoggerFactory.getLogger(MongoListenerLockService.class);
 
   public MongoListenerLockService(Clock clock, MongoCollection<BsonDocument> listenerLocks,
       String listenerId, Duration leaseTime) {
@@ -60,19 +66,37 @@ public class MongoListenerLockService {
    * otherwise an empty optional if the lock is held by a different listener.
    */
   public Optional<MongoResumeToken> acquireOrRefreshFor(String resource) {
-    final BsonDocument found = collection.findOneAndUpdate(
-        and(
-            eq("_id", resource),
-            or(lockIsExpired(), eq("listenerId", listenerId))),
-        combine(
-            set("expiresAt", clock.instant().plus(leaseTime)),
-            set("listenerId", listenerId)),
-        new FindOneAndUpdateOptions()
-            .projection(include("resumeToken"))
-            .returnDocument(ReturnDocument.AFTER)
-            .upsert(true));
-    return Optional.ofNullable(found)
-        .map(s -> new MongoResumeToken(found.getDocument("resumeToken", null)));
+    log.debug("Attempt acquire or refresh lock. resource={} listenerId={}", resource, listenerId);
+
+    try {
+      final BsonDocument found = collection.findOneAndUpdate(
+          and(
+              eq("_id", resource),
+              or(lockIsExpired(), eq("listenerId", listenerId))),
+          combine(
+              set("expiresAt", clock.instant().plus(leaseTime)),
+              set("listenerId", listenerId)),
+          new FindOneAndUpdateOptions()
+              .projection(include("resumeToken"))
+              .returnDocument(ReturnDocument.AFTER)
+              .upsert(true));
+
+      log.debug("Locked resource={} listenerId={}", resource, listenerId);
+
+      return Optional.ofNullable(found)
+          .map(s -> new MongoResumeToken(found.getDocument("resumeToken", null)));
+
+    } catch (MongoCommandException e) {
+      if (ErrorCategory.fromErrorCode(e.getErrorCode()).equals(ErrorCategory.DUPLICATE_KEY)) {
+        log.debug("Lost race to lock resource={} listenerId={}", resource, listenerId);
+        return Optional.empty();
+      }
+
+      log.error("Error trying to acquire or refresh lock resource={} listenerId={}",
+          resource, listenerId, e);
+
+      throw e;
+    }
   }
 
   public void commit(String resource, MongoResumeToken resumeToken) throws LostLockException {
@@ -89,18 +113,7 @@ public class MongoListenerLockService {
     return or(
         eq("expiresAt", null),
         not(exists("expiresAt")),
-        lte("expiresAt", clock.instant()),
-        // Treat all locks as expired until the first change is processed.
-        // The first change is processed when there is a resumeToken stored, hence also looking for
-        // missing resumeToken.
-        // This is a hack to get around lack of startAtOperationTime added in 4.0.
-        // If we can use mongo 4+, we can improve this.
-        // The reason we want all processes to get a lock if they ask, is because unless
-        // we get 4+, we have to guarantee a listener is running before the first
-        // insert. The only way to guarantee–and even then it is not truly a guarantee–
-        // is if every process tries to get a lock, and waits to start until it thinks
-        // someone is listening.
-        not(exists("resumeToken"))
+        lte("expiresAt", clock.instant())
     );
   }
 }
