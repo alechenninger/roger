@@ -4,6 +4,6 @@ import org.bson.BsonTimestamp;
 
 import java.util.Optional;
 
-public interface StartOperationTime {
-  Optional<BsonTimestamp> startFrom();
+public interface TimestampProvider {
+  Optional<BsonTimestamp> timestamp();
 }

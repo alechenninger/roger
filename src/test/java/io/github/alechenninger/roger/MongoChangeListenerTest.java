@@ -16,7 +16,6 @@ import io.github.alechenninger.roger.testing.MongoDb;
 import org.awaitility.Awaitility;
 import org.bson.BsonDocument;
 import org.bson.Document;
-import org.bson.codecs.pojo.annotations.BsonId;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
@@ -54,7 +53,7 @@ class MongoChangeListenerTest {
           db.getCollection("listenerLocks", BsonDocument.class),
       "test",
       Duration.ofMinutes(5)));
-  StartOperationTime earliestOplogEntry = new EarliestOplogEntry(mongo.client());
+  TimestampProvider earliestOplogEntry = new EarliestOplogEntry(mongo.client());
 
   @AfterEach
   void cleanUp() {

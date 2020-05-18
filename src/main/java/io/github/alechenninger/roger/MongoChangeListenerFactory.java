@@ -42,7 +42,7 @@ public class MongoChangeListenerFactory {
   }
 
   public <T> Closeable onChangeTo(MongoCollection<T> collection, Consumer<T> callback,
-      StartOperationTime startOperationTime) {
+      TimestampProvider initialStartTime) {
     MongoChangeListener<T> listener = new MongoChangeListener<>(
         lock,
         change -> {
@@ -64,7 +64,7 @@ public class MongoChangeListenerFactory {
         },
         maxAwaitTime,
         collection,
-        startOperationTime);
+        initialStartTime);
 
     refreshStrategy.scheduleInBackground(listener::startOrRefresh, leaseTime);
 

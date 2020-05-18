@@ -11,7 +11,7 @@ import org.bson.conversions.Bson;
 
 import java.util.Optional;
 
-public class EarliestOplogEntry implements StartOperationTime {
+public class EarliestOplogEntry implements TimestampProvider {
   private final MongoClient client;
 
   private static final Bson NOT_NOOP = Filters.ne("op", "n");
@@ -21,7 +21,7 @@ public class EarliestOplogEntry implements StartOperationTime {
   }
 
   @Override
-  public Optional<BsonTimestamp> startFrom() {
+  public Optional<BsonTimestamp> timestamp() {
     final MongoDatabase local = client.getDatabase("local");
     final MongoCollection<Document> oplog = local.getCollection("oplog.rs");
     final Document first = oplog.find(NOT_NOOP)
