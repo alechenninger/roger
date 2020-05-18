@@ -32,7 +32,7 @@ public class MongoDb implements BeforeAllCallback, AfterAllCallback {
           fromProviders(PojoCodecProvider.builder()
               .conventions(Conventions.DEFAULT_CONVENTIONS)
               .automatic(true)
-              g.build()));
+              .build()));
 
   public static MongoDb replicaSet() {
     return new MongoDb();
