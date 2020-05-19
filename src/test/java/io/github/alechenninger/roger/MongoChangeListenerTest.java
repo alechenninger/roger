@@ -1,5 +1,6 @@
 package io.github.alechenninger.roger;
 
+import static io.github.alechenninger.roger.DecodingConsumer.decoded;
 import static org.hamcrest.Matchers.contains;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.hasSize;
@@ -64,7 +65,7 @@ class MongoChangeListenerTest {
   @Test
   void listensToInserts() {
     List<TestDoc> log = new ArrayList<>();
-    ChangeConsumer<TestDoc> logIt = (it, tok) -> log.add(it);
+    ChangeConsumer<TestDoc> logIt = (change, tok) -> log.add(change.getFullDocument());
 
     final MongoCollection<TestDoc> collection = db.getCollection("test", TestDoc.class);
     closer.closeItAfterTest(listenerFactory.onChangeTo(collection, logIt, earliestOplogEntry));
@@ -76,7 +77,9 @@ class MongoChangeListenerTest {
   @Test
   void listensToUpdates() {
     List<Document> log = new ArrayList<>();
-    ChangeConsumer<Document> logIt = (it, tok) -> log.add(it);
+    ChangeConsumer<Document> logIt = decoded(
+        db.getCodecRegistry().get(Document.class),
+        (it, tok) -> log.add(it));
 
     final MongoCollection<Document> collection = db.getCollection("test");
     collection.insertOne(new Document("_id", "test"));
@@ -93,9 +96,11 @@ class MongoChangeListenerTest {
   }
 
   @Test
-  void listensToUpdatesWithParsing() {
+  void listensToUpdatesAsPojo() {
     List<TestDoc> log = new ArrayList<>();
-    ChangeConsumer<TestDoc> logIt = (it, tok) -> log.add(it);
+    ChangeConsumer<TestDoc> logIt = decoded(
+        db.getCodecRegistry().get(TestDoc.class),
+        (it, tok) -> log.add(it));
 
     final MongoCollection<TestDoc> collection = db.getCollection("test", TestDoc.class);
     TestDoc testDoc = new TestDoc("test", null);
@@ -117,7 +122,7 @@ class MongoChangeListenerTest {
   @Test
   void listensToReplacements() {
     List<Document> log = new ArrayList<>();
-    ChangeConsumer<Document> logIt = (it, tok) -> log.add(it);
+    ChangeConsumer<Document> logIt = (change, tok) -> log.add(change.getFullDocument());
 
     final MongoCollection<Document> collection = db.getCollection("test");
     collection.insertOne(new Document("_id", "test"));

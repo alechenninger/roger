@@ -80,11 +80,6 @@ public class MongoListenerLockService {
   public Optional<ListenerLock> acquireOrRefreshFor(String resource) {
     log.debug("Attempt acquire or refresh lock. resource={} listenerId={}", resource, listenerId);
 
-    /*
-    if knows does not have lock, try acquire and inc token
-    if thinks has lock, pass token, try refresh and do not inc token
-     */
-
     try {
       final BsonDocument found = collection.findOneAndUpdate(
           and(

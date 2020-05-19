@@ -2,10 +2,8 @@ package io.github.alechenninger.roger;
 
 import com.mongodb.client.MongoCollection;
 import com.mongodb.client.MongoDatabase;
-import com.mongodb.client.model.changestream.UpdateDescription;
+import com.mongodb.client.model.changestream.ChangeStreamDocument;
 import org.bson.BsonDocument;
-import org.bson.BsonDocumentReader;
-import org.bson.codecs.DecoderContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -14,7 +12,6 @@ import java.time.Clock;
 import java.time.Duration;
 import java.util.UUID;
 import java.util.function.BiConsumer;
-import java.util.function.Consumer;
 
 public class MongoChangeListenerFactory {
   private final Duration leaseTime;
@@ -42,30 +39,10 @@ public class MongoChangeListenerFactory {
         Duration.ofMinutes(5)));
   }
 
-  public <T> Closeable onChangeTo(MongoCollection<T> collection, BiConsumer<T, Long> callback,
-      TimestampProvider initialStartTime) {
+  public <T> Closeable onChangeTo(MongoCollection<T> collection,
+      BiConsumer<ChangeStreamDocument<T>, Long> callback, TimestampProvider initialStartTime) {
     MongoChangeListener<T> listener = new MongoChangeListener<>(
-        lock,
-        (change, lockVersion) -> {
-          if (change.getFullDocument() == null) {
-            UpdateDescription update = change.getUpdateDescription();
-            if (update == null) {
-              log.info("Change had neither full document, nor update description; " +
-                  "nothing to process. change={}", change);
-              return;
-            }
-            BsonDocumentReader reader = new BsonDocumentReader(update.getUpdatedFields());
-            final T fromUpdate = collection.getCodecRegistry()
-                .get(collection.getDocumentClass())
-                .decode(reader, DecoderContext.builder().build());
-            callback.accept(fromUpdate, lockVersion);
-          } else {
-            callback.accept(change.getFullDocument(), lockVersion);
-          }
-        },
-        maxAwaitTime,
-        collection,
-        initialStartTime);
+        lock, callback, maxAwaitTime, collection, initialStartTime);
 
     refreshStrategy.scheduleInBackground(listener::startOrRefresh, leaseTime);
 
@@ -75,4 +52,5 @@ public class MongoChangeListenerFactory {
   interface RefreshStrategy extends Closeable {
     void scheduleInBackground(Runnable refresh, Duration leaseTime);
   }
+
 }
