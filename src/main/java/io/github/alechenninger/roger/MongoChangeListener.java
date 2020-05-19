@@ -9,7 +9,6 @@ import org.bson.BsonTimestamp;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import javax.annotation.Nullable;
 import java.io.Closeable;
 import java.io.IOException;
 import java.time.Duration;
@@ -22,8 +21,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 
 public class MongoChangeListener<T> implements Closeable {
-  private final MongoListenerLockService lock;
-  private final String collectionNamespace;
+  private final MongoListenerLockService lockService;
+  private final String collectionNs;
   private final Consumer<ChangeStreamDocument<T>> callback;
   private final Duration maxAwaitTime;
   private final MongoCollection<T> collection;
@@ -38,11 +37,11 @@ public class MongoChangeListener<T> implements Closeable {
 
   private static final Logger log = LoggerFactory.getLogger(MongoChangeListener.class);
 
-  public MongoChangeListener(MongoListenerLockService lock,
+  public MongoChangeListener(MongoListenerLockService lockService,
       Consumer<ChangeStreamDocument<T>> callback, Duration maxAwaitTime,
       MongoCollection<T> collection, TimestampProvider initialStartTime) {
-    this.lock = lock;
-    this.collectionNamespace = collection.getNamespace().getFullName();
+    this.lockService = lockService;
+    this.collectionNs = collection.getNamespace().getFullName();
     this.callback = callback;
     this.maxAwaitTime = maxAwaitTime;
     this.collection = collection;
@@ -54,12 +53,11 @@ public class MongoChangeListener<T> implements Closeable {
       throw new IllegalStateException("Cannot start again once closed.");
     }
 
-    // TODO: return value is a bit odd. resume token but might not actually have a resume token...
-    final Optional<MongoResumeToken> resumeToken = lock.acquireOrRefreshFor(collectionNamespace);
+    final Optional<ListenerLock> maybeLock = lockService.acquireOrRefreshFor(collectionNs);
 
-    if (resumeToken.isPresent()) {
-      final MongoResumeToken it = resumeToken.get();
-      startOrContinueListening(it);
+    if (maybeLock.isPresent()) {
+      final ListenerLock lock = maybeLock.get();
+      startOrContinueListening(lock);
     } else {
       if (stopListening()) {
         log.warn("Lost lock, listener stopped");
@@ -95,6 +93,8 @@ public class MongoChangeListener<T> implements Closeable {
    * {@link #maxAwaitTime} and whether or not a change is currently being processed).
    *
    * <p>Once stopped, may be resumed by {@link #startOrRefresh()}.
+   *
+   * @return {@code true} if a listener was currently active when this method was called
    */
   private synchronized boolean stopListening() {
     if (listener != null) {
@@ -104,22 +104,25 @@ public class MongoChangeListener<T> implements Closeable {
     return false;
   }
 
-  private synchronized void startOrContinueListening(MongoResumeToken resumeToken) {
+  private synchronized void startOrContinueListening(ListenerLock lock) {
     if (isListening()) {
       log.debug("Lock refreshed and listener already running. Doing nothing.");
       return;
     }
 
-    log.debug("Lock acquired and listener not started. Looking for offset. resumeToken={}", resumeToken);
+    final Optional<BsonDocument> resumeToken = lock.resumeToken();
 
-    final ChangeOffset offset = Optional.ofNullable(resumeToken.document())
+    log.debug("Lock acquired and listener not started. Looking for offset. " +
+        "resumeToken={}", resumeToken);
+
+    final ChangeOffset offset = resumeToken
         .<ChangeOffset>map(ResumeTokenOffset::new)
         .orElse(initialStartTime.timestamp()
             .map(OperationTimeOffset::new)
             .orElse(null));
 
     if (offset == null) {
-      log.info("No operation to start or resume from; cannot safely start listener");
+      log.warn("No operation to start or resume from; cannot safely start listener");
       return;
     }
 
@@ -174,25 +177,6 @@ public class MongoChangeListener<T> implements Closeable {
     }
   }
 
-  static class MongoResumeToken {
-    @Nullable
-    private final BsonDocument resumeToken;
-
-    public MongoResumeToken(@Nullable BsonDocument resumeToken) {
-      this.resumeToken = resumeToken;
-    }
-
-    /**
-     * The resume token document from a previous {@link ChangeStreamDocument}.
-     *
-     * <p>May be {@code null} if there was no resume token yet stored.
-     */
-    @Nullable
-    public BsonDocument document() {
-      return resumeToken;
-    }
-  }
-
   private class Listen implements Runnable {
     private final ChangeOffset offset;
 
@@ -231,11 +215,11 @@ public class MongoChangeListener<T> implements Closeable {
 
             callback.accept(change);
 
-            MongoResumeToken newResumeToken = new MongoResumeToken(change.getResumeToken());
+            BsonDocument nextResumeToken = change.getResumeToken();
 
-            log.debug("Change processed, committing new resume position {}", newResumeToken);
+            log.debug("Change processed, committing new resume position {}", nextResumeToken);
 
-            lock.commit(collectionNamespace, newResumeToken);
+            lockService.commit(collectionNs, nextResumeToken);
           } catch (LostLockException e) {
             log.warn("Lost lock while listening to change", e);
             break;

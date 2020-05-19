@@ -1,5 +1,6 @@
 package io.github.alechenninger.roger;
 
+import static com.mongodb.ErrorCategory.DUPLICATE_KEY;
 import static com.mongodb.client.model.Filters.and;
 import static com.mongodb.client.model.Filters.eq;
 import static com.mongodb.client.model.Filters.exists;
@@ -16,7 +17,7 @@ import com.mongodb.client.MongoCollection;
 import com.mongodb.client.MongoDatabase;
 import com.mongodb.client.model.FindOneAndUpdateOptions;
 import com.mongodb.client.model.ReturnDocument;
-import io.github.alechenninger.roger.MongoChangeListener.MongoResumeToken;
+import com.mongodb.client.result.UpdateResult;
 import org.bson.BsonDocument;
 import org.bson.conversions.Bson;
 import org.slf4j.Logger;
@@ -54,7 +55,7 @@ public class MongoListenerLockService {
   /**
    * Attempts to acquire the lock for the current listener ID, or refresh a lock already held by
    * the current listener ID (extending its lease). If the lock is acquired, a
-   * {@link MongoResumeToken} will be returned. Otherwise, will return {@link Optional#empty()}.
+   * {@link ListenerLock} will be returned. Otherwise, will return {@link Optional#empty()}.
    *
    * <p>Only one listener ID will hold a lock for a given {@code resource} at any time.
    *
@@ -62,10 +63,10 @@ public class MongoListenerLockService {
    * token, like an increasing version number, when taking actions which require the lock.
    *
    * @param resource The resource to lock.
-   * @return {@code Optional} with a {@link MongoResumeToken} if the lock is held by this listener,
+   * @return {@code Optional} with a {@link ListenerLock} if the lock is held by this listener,
    * otherwise an empty optional if the lock is held by a different listener.
    */
-  public Optional<MongoResumeToken> acquireOrRefreshFor(String resource) {
+  public Optional<ListenerLock> acquireOrRefreshFor(String resource) {
     log.debug("Attempt acquire or refresh lock. resource={} listenerId={}", resource, listenerId);
 
     try {
@@ -84,10 +85,11 @@ public class MongoListenerLockService {
       log.debug("Locked resource={} listenerId={}", resource, listenerId);
 
       return Optional.ofNullable(found)
-          .map(s -> new MongoResumeToken(found.getDocument("resumeToken", null)));
-
+          .map(s -> new ListenerLock(found.getDocument("resumeToken", null)));
     } catch (MongoCommandException e) {
-      if (ErrorCategory.fromErrorCode(e.getErrorCode()).equals(ErrorCategory.DUPLICATE_KEY)) {
+      final ErrorCategory errorCategory = ErrorCategory.fromErrorCode(e.getErrorCode());
+
+      if (errorCategory.equals(DUPLICATE_KEY)) {
         log.debug("Lost race to lock resource={} listenerId={}", resource, listenerId);
         return Optional.empty();
       }
@@ -99,14 +101,21 @@ public class MongoListenerLockService {
     }
   }
 
-  public void commit(String resource, MongoResumeToken resumeToken) throws LostLockException {
-    collection.updateOne(
+  public void commit(String resource, BsonDocument resumeToken) throws LostLockException {
+    UpdateResult result = collection.updateOne(
         and(
             eq("_id", resource),
             eq("listenerId", listenerId)),
         combine(
             set("expiresAt", clock.instant().plus(leaseTime)),
-            set("resumeToken", resumeToken.document())));
+            set("resumeToken", resumeToken)));
+
+    if (result.getMatchedCount() == 0) {
+      throw new LostLockException();
+    }
+
+    log.debug("Committed new resume token for lock. resource={} listenerId={} resumeToken={}",
+        resource, listenerId, resumeToken);
   }
 
   private Bson lockIsExpired() {

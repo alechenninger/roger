@@ -48,11 +48,12 @@ class MongoChangeListenerTest {
   MongoChangeListenerFactory listenerFactory = new MongoChangeListenerFactory(
       Duration.ofMinutes(5),
       refreshStrategy,
-      Duration.ofSeconds(1), new MongoListenerLockService(
-      Clock.systemUTC(),
+      Duration.ofSeconds(1),
+      new MongoListenerLockService(
+          Clock.systemUTC(),
           db.getCollection("listenerLocks", BsonDocument.class),
-      "test",
-      Duration.ofMinutes(5)));
+          "test",
+          Duration.ofMinutes(5)));
   TimestampProvider earliestOplogEntry = new EarliestOplogEntry(mongo.client());
 
   @AfterEach
