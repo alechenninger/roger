@@ -18,18 +18,19 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
-import java.util.function.Consumer;
+import java.util.function.BiConsumer;
 
 public class MongoChangeListener<T> implements Closeable {
   private final MongoListenerLockService lockService;
   private final String collectionNs;
-  private final Consumer<ChangeStreamDocument<T>> callback;
+  private final BiConsumer<ChangeStreamDocument<T>, Long> callback;
   private final Duration maxAwaitTime;
   private final MongoCollection<T> collection;
   private final ExecutorService executor = Executors.newSingleThreadExecutor();
   private final TimestampProvider initialStartTime;
 
   private boolean closed = false;
+  private ListenerLock lastLock;
 
   // Volatile due to access inside listener thread
   // Non-null once set, but may be set multiple times
@@ -38,7 +39,7 @@ public class MongoChangeListener<T> implements Closeable {
   private static final Logger log = LoggerFactory.getLogger(MongoChangeListener.class);
 
   public MongoChangeListener(MongoListenerLockService lockService,
-      Consumer<ChangeStreamDocument<T>> callback, Duration maxAwaitTime,
+      BiConsumer<ChangeStreamDocument<T>, Long> callback, Duration maxAwaitTime,
       MongoCollection<T> collection, TimestampProvider initialStartTime) {
     this.lockService = lockService;
     this.collectionNs = collection.getNamespace().getFullName();
@@ -128,7 +129,7 @@ public class MongoChangeListener<T> implements Closeable {
 
     log.info("Scheduling listener to start in background from offset {}", offset);
 
-    listener = executor.submit(new Listen(offset));
+    listener = executor.submit(new Listen(offset, lock.version()));
   }
 
   interface ChangeOffset {
@@ -179,11 +180,13 @@ public class MongoChangeListener<T> implements Closeable {
 
   private class Listen implements Runnable {
     private final ChangeOffset offset;
+    private final long lockVersion;
 
     private final Logger log = LoggerFactory.getLogger(Listen.class);
 
-    public Listen(ChangeOffset offset) {
+    public Listen(ChangeOffset offset, long lockVersion) {
       this.offset = offset;
+      this.lockVersion = lockVersion;
     }
 
     @Override
@@ -213,7 +216,7 @@ public class MongoChangeListener<T> implements Closeable {
 
             log.debug("Accepting change {}", change);
 
-            callback.accept(change);
+            callback.accept(change, lockVersion);
 
             BsonDocument nextResumeToken = change.getResumeToken();
 

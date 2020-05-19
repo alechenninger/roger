@@ -15,8 +15,8 @@ contains a corresponding resume token (or timestamp? if logical timestamp), and 
 sortable, so we can know which change was not already observed.
 
 I suppose if you work from a static backup that is not accepting writes, you can use the existing
-documents to replay "changes", and the existing oplog to know when to pick back up, by timestamp.
-The timestamp isn't as reliable as a resume token though, I imagine.
+documents to replay "changes", and the existing oplog to know when to pick back up, by timestamp (
+by examining the last oplog entry timestamp).
 
 Either way this throws out the order relationships between documents themselves.
 
@@ -78,8 +78,9 @@ Of course, it is limited by oplog size. But, the use case I am thinking of would
 changes from the beginning, so this bootstrapping problem is really only a problem when the oplog is
 small or even empty. Effectively the listener is like another replica set member: it must be 
 listening to the oplog before it fills up or it needs to be resync'd. Except in this case, there is
-no resync solution I'm aware of (perhaps we could reverse engineer what replica sets do in that 
-case). 
+no resync solution I'm aware of. When a replicaset member is added, it can be caught up because it
+can clone an existing member with its existing oplog. I guess the algorithm described above is 
+analogous (replay documents as changes from backup) but not quite the same.
 
 However, this also may be brittle; I'm not sure if the oplog schema is guaranteed to be stable. They
 created change streams so we could stop looking at the oplog after all ^_^. That said it is easy to 

@@ -5,26 +5,37 @@ import static com.mongodb.client.model.Filters.and;
 import static com.mongodb.client.model.Filters.eq;
 import static com.mongodb.client.model.Filters.exists;
 import static com.mongodb.client.model.Filters.lte;
+import static com.mongodb.client.model.Filters.ne;
 import static com.mongodb.client.model.Filters.not;
 import static com.mongodb.client.model.Filters.or;
 import static com.mongodb.client.model.Projections.include;
 import static com.mongodb.client.model.Updates.combine;
+import static com.mongodb.client.model.Updates.inc;
 import static com.mongodb.client.model.Updates.set;
+import static java.util.Arrays.asList;
+import static java.util.Collections.singletonList;
 
+import com.google.common.collect.ImmutableMap;
 import com.mongodb.ErrorCategory;
 import com.mongodb.MongoCommandException;
 import com.mongodb.client.MongoCollection;
 import com.mongodb.client.MongoDatabase;
+import com.mongodb.client.model.Accumulators;
+import com.mongodb.client.model.Aggregates;
 import com.mongodb.client.model.FindOneAndUpdateOptions;
 import com.mongodb.client.model.ReturnDocument;
+import com.mongodb.client.model.Updates;
 import com.mongodb.client.result.UpdateResult;
 import org.bson.BsonDocument;
+import org.bson.Document;
 import org.bson.conversions.Bson;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.time.Clock;
 import java.time.Duration;
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -69,23 +80,37 @@ public class MongoListenerLockService {
   public Optional<ListenerLock> acquireOrRefreshFor(String resource) {
     log.debug("Attempt acquire or refresh lock. resource={} listenerId={}", resource, listenerId);
 
+    /*
+    if knows does not have lock, try acquire and inc token
+    if thinks has lock, pass token, try refresh and do not inc token
+     */
+
     try {
       final BsonDocument found = collection.findOneAndUpdate(
           and(
               eq("_id", resource),
               or(lockIsExpired(), eq("listenerId", listenerId))),
-          combine(
-              set("expiresAt", clock.instant().plus(leaseTime)),
-              set("listenerId", listenerId)),
+          singletonList(
+              combine(
+                  set("version", new Document("$cond", new Document(ImmutableMap.of(
+                      "if", new Document("$ne", Arrays.asList("$listenerId", listenerId)),
+                      "then", new Document("$ifNull", asList(
+                          new Document("$add", Arrays.asList("$version", 1)),
+                          0)),
+                      "else", "$version")))),
+                  set("expiresAt", clock.instant().plus(leaseTime)),
+                  set("listenerId", listenerId))),
           new FindOneAndUpdateOptions()
-              .projection(include("resumeToken"))
+              .projection(include("resumeToken", "version"))
               .returnDocument(ReturnDocument.AFTER)
               .upsert(true));
 
       log.debug("Locked resource={} listenerId={}", resource, listenerId);
 
       return Optional.ofNullable(found)
-          .map(s -> new ListenerLock(found.getDocument("resumeToken", null)));
+          .map(it -> new ListenerLock(
+              it.getNumber("version"),
+              it.getDocument("resumeToken", null)));
     } catch (MongoCommandException e) {
       final ErrorCategory errorCategory = ErrorCategory.fromErrorCode(e.getErrorCode());
 

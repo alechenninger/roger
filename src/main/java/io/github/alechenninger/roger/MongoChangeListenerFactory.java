@@ -13,6 +13,7 @@ import java.io.Closeable;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.UUID;
+import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 
 public class MongoChangeListenerFactory {
@@ -41,11 +42,11 @@ public class MongoChangeListenerFactory {
         Duration.ofMinutes(5)));
   }
 
-  public <T> Closeable onChangeTo(MongoCollection<T> collection, Consumer<T> callback,
+  public <T> Closeable onChangeTo(MongoCollection<T> collection, BiConsumer<T, Long> callback,
       TimestampProvider initialStartTime) {
     MongoChangeListener<T> listener = new MongoChangeListener<>(
         lock,
-        change -> {
+        (change, lockVersion) -> {
           if (change.getFullDocument() == null) {
             UpdateDescription update = change.getUpdateDescription();
             if (update == null) {
@@ -57,9 +58,9 @@ public class MongoChangeListenerFactory {
             final T fromUpdate = collection.getCodecRegistry()
                 .get(collection.getDocumentClass())
                 .decode(reader, DecoderContext.builder().build());
-            callback.accept(fromUpdate);
+            callback.accept(fromUpdate, lockVersion);
           } else {
-            callback.accept(change.getFullDocument());
+            callback.accept(change.getFullDocument(), lockVersion);
           }
         },
         maxAwaitTime,

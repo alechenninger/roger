@@ -64,7 +64,7 @@ class MongoChangeListenerTest {
   @Test
   void listensToInserts() {
     List<TestDoc> log = new ArrayList<>();
-    ChangeConsumer<TestDoc> logIt = log::add;
+    ChangeConsumer<TestDoc> logIt = (it, tok) -> log.add(it);
 
     final MongoCollection<TestDoc> collection = db.getCollection("test", TestDoc.class);
     closer.closeItAfterTest(listenerFactory.onChangeTo(collection, logIt, earliestOplogEntry));
@@ -76,7 +76,7 @@ class MongoChangeListenerTest {
   @Test
   void listensToUpdates() {
     List<Document> log = new ArrayList<>();
-    ChangeConsumer<Document> logIt = log::add;
+    ChangeConsumer<Document> logIt = (it, tok) -> log.add(it);
 
     final MongoCollection<Document> collection = db.getCollection("test");
     collection.insertOne(new Document("_id", "test"));
@@ -95,7 +95,7 @@ class MongoChangeListenerTest {
   @Test
   void listensToUpdatesWithParsing() {
     List<TestDoc> log = new ArrayList<>();
-    ChangeConsumer<TestDoc> logIt = log::add;
+    ChangeConsumer<TestDoc> logIt = (it, tok) -> log.add(it);
 
     final MongoCollection<TestDoc> collection = db.getCollection("test", TestDoc.class);
     TestDoc testDoc = new TestDoc("test", null);
@@ -117,7 +117,7 @@ class MongoChangeListenerTest {
   @Test
   void listensToReplacements() {
     List<Document> log = new ArrayList<>();
-    ChangeConsumer<Document> logIt = log::add;
+    ChangeConsumer<Document> logIt = (it, tok) -> log.add(it);
 
     final MongoCollection<Document> collection = db.getCollection("test");
     collection.insertOne(new Document("_id", "test"));

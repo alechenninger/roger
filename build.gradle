@@ -13,12 +13,12 @@ dependencies {
   api 'org.mongodb:mongodb-driver-sync:4.0.3'
   api 'org.slf4j:slf4j-api:1.7.9'
   api 'com.google.code.findbugs:jsr305:3.0.2'
+  implementation 'com.google.guava:guava:29.0-jre'
   testImplementation "org.testcontainers:testcontainers:1.14.2"
   testImplementation 'org.testcontainers:mongodb:1.14.2'
 //  testImplementation 'de.flapdoodle.embed:de.flapdoodle.embed.mongo:2.2.0'
   testImplementation 'org.junit.jupiter:junit-jupiter-api:5.6.2'
   testImplementation 'org.awaitility:awaitility:4.0.2'
-  testImplementation 'com.google.guava:guava:29.0-jre'
 //  testImplementation 'com.github.silaev:mongodb-replica-set:0.3.1'
   testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.6.2'
   testRuntimeOnly 'ch.qos.logback:logback-classic:1.2.3'

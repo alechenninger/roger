@@ -53,7 +53,7 @@ public class MongoDb implements BeforeAllCallback, AfterAllCallback {
   }
 
   public void start() throws IOException {
-    server = new MongoDBContainer();
+    server = new MongoDBContainer("mongo:4.2.6");
     server.start();
     client = MongoClients.create(MongoClientSettings.builder()
         .applyConnectionString(new ConnectionString(server.getReplicaSetUrl()))
