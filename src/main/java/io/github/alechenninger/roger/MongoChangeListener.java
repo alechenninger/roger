@@ -1,5 +1,6 @@
 package io.github.alechenninger.roger;
 
+import com.mongodb.MongoInterruptedException;
 import com.mongodb.client.ChangeStreamIterable;
 import com.mongodb.client.MongoChangeStreamCursor;
 import com.mongodb.client.MongoCollection;
@@ -80,7 +81,7 @@ public class MongoChangeListener<T> implements Closeable {
 
     executor.shutdown();
     try {
-      executor.awaitTermination(30, TimeUnit.SECONDS);
+      executor.awaitTermination(maxAwaitTime.toMillis(), TimeUnit.MILLISECONDS);
     } catch (InterruptedException e) {
       log.info("Interrupted while waiting for listener to terminate", e);
     }
@@ -99,7 +100,7 @@ public class MongoChangeListener<T> implements Closeable {
    */
   private synchronized boolean stopListening() {
     if (listener != null) {
-      listener.cancel(false);
+      listener.cancel(true);
       return true;
     }
     return false;
@@ -207,12 +208,14 @@ public class MongoChangeListener<T> implements Closeable {
         // callback must participate in locking to truly ensure order e.g. with fencing tokens.
         while (isListening()) {
           try {
-            ChangeStreamDocument<T> change = cursor.next();
+            ChangeStreamDocument<T> change = cursor.tryNext();
 
             if (!isListening()) {
-              log.info("Got change but lost lock; aborting change processing");
+              log.info("Listener has been stopped; aborting change processing");
               break;
             }
+
+            if (change == null) continue;
 
             log.debug("Accepting change {}", change);
 
@@ -226,8 +229,11 @@ public class MongoChangeListener<T> implements Closeable {
           } catch (LostLockException e) {
             log.warn("Lost lock while listening to change", e);
             break;
+          } catch (MongoInterruptedException e) {
+            log.info("Caught interrupt while listening for changes, stopping: {}", e.getMessage());
+            break;
           } catch (Exception e) {
-            log.error("Uncaught exception while listening to change", e);
+            log.error("Uncaught exception while listening to change, stopping", e);
             break;
           }
         }
