@@ -31,7 +31,6 @@ public class MongoChangeListener<T> implements Closeable {
   private final TimestampProvider initialStartTime;
 
   private boolean closed = false;
-  private ListenerLock lastLock;
 
   // Volatile due to access inside listener thread
   // Non-null once set, but may be set multiple times

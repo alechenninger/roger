@@ -16,6 +16,7 @@ import static java.util.Collections.singletonList;
 import com.google.common.collect.ImmutableMap;
 import com.mongodb.ErrorCategory;
 import com.mongodb.MongoCommandException;
+import com.mongodb.WriteConcern;
 import com.mongodb.client.MongoCollection;
 import com.mongodb.client.MongoDatabase;
 import com.mongodb.client.model.FindOneAndUpdateOptions;
@@ -74,18 +75,20 @@ public class MongoListenerLockService {
     log.debug("Attempt acquire or refresh lock. resource={} listenerId={}", resource, listenerId);
 
     try {
-      final BsonDocument found = collection.findOneAndUpdate(
-          and(
-              eq("_id", resource),
-              or(lockIsExpired(), eq("listenerId", listenerId))),
-          singletonList(combine(
-              set("listenerId", listenerId),
-              set("version", sameIfRefreshOtherwiseIncrement()),
-              set("expiresAt", clock.instant().plus(leaseTime)))),
-          new FindOneAndUpdateOptions()
-              .projection(include("resumeToken", "version"))
-              .returnDocument(ReturnDocument.AFTER)
-              .upsert(true));
+      final BsonDocument found = collection
+          .withWriteConcern(WriteConcern.MAJORITY)
+          .findOneAndUpdate(
+              and(
+                  eq("_id", resource),
+                  or(lockIsExpired(), eq("listenerId", listenerId))),
+              singletonList(combine(
+                  set("listenerId", listenerId),
+                  set("version", sameIfRefreshOtherwiseIncrement()),
+                  set("expiresAt", clock.instant().plus(leaseTime)))),
+              new FindOneAndUpdateOptions()
+                  .projection(include("resumeToken", "version"))
+                  .returnDocument(ReturnDocument.AFTER)
+                  .upsert(true));
 
       log.debug("Locked resource={} listenerId={}", resource, listenerId);
 
@@ -109,13 +112,15 @@ public class MongoListenerLockService {
   }
 
   public void commit(String resource, BsonDocument resumeToken) throws LostLockException {
-    UpdateResult result = collection.updateOne(
-        and(
-            eq("_id", resource),
-            eq("listenerId", listenerId)),
-        combine(
-            set("expiresAt", clock.instant().plus(leaseTime)),
-            set("resumeToken", resumeToken)));
+    UpdateResult result = collection
+        .withWriteConcern(WriteConcern.MAJORITY)
+        .updateOne(
+            and(
+                eq("_id", resource),
+                eq("listenerId", listenerId)),
+            combine(
+                set("expiresAt", clock.instant().plus(leaseTime)),
+                set("resumeToken", resumeToken)));
 
     if (result.getMatchedCount() == 0) {
       throw new LostLockException();
