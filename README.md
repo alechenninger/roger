@@ -21,4 +21,4 @@ change. Additionally, there is no built-in tracking of where you left off. If yo
 
 To do this we use a locking algorithm that coordinates multiple listeners.
 
-For more information, see this blog post (COMING SOON).
+For more information, see [this blog post](https://www.alechenninger.com/2020/05/building-kafka-like-message-queue-with.html).
