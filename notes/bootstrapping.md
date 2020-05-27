@@ -97,3 +97,10 @@ A naive approach still has a race condition, a possible phantom read:
 This scenario misses the t2 insert change.
 
 We can solve this by never starting the listener until there is an oplog entry.
+
+There is a race with initial start time from the oplog: after we get the timestamp, but before we 
+start listening, this timestamp may be dropped from the oplog. In these cases, if there is any write
+volume, we may have a hard time getting the oldest entry that keeps getting dropped. However, if
+that's happening it means we've already missed changes, so it may make sense to allow configuring a
+start time, or just start from "now", since some history will need to be figured out by the user 
+anyway.
