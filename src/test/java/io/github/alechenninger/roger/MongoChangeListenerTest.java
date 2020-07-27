@@ -9,7 +9,7 @@ package io.github.alechenninger.roger;
 import static io.github.alechenninger.roger.DecodingConsumer.decoded;
 import static org.hamcrest.Matchers.contains;
 import static org.hamcrest.Matchers.equalTo;
-import static org.hamcresgt.Matchers.hasSize;
+import static org.hamcrest.Matchers.hasSize;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import com.google.common.collect.ImmutableMap;
