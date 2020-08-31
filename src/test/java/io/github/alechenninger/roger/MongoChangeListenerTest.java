@@ -17,6 +17,7 @@ import com.mongodb.client.MongoCollection;
 import com.mongodb.client.MongoDatabase;
 import com.mongodb.client.model.Filters;
 import com.mongodb.client.model.Updates;
+import com.mongodb.client.model.changestream.ChangeStreamDocument;
 import com.mongodb.client.result.UpdateResult;
 import io.github.alechenninger.roger.testing.Defer;
 import io.github.alechenninger.roger.testing.MongoDb;
@@ -135,6 +136,39 @@ class MongoChangeListenerTest {
         .until(
             () -> log.stream().skip(1).collect(Collectors.toList()),
             contains(equalTo(new Document(ImmutableMap.of("_id", "test", "foo", "bar")))));
+  }
+
+  @Test
+  void retriesExceptions() {
+    List<Document> log = new ArrayList<>();
+
+    class TakesTwoTries implements ChangeConsumer<Document> {
+      int count = 0;
+
+      @Override
+      public void accept(ChangeStreamDocument<Document> change, Long aLong) {
+        if (count++ == 0) {
+          throw new SimulatedException();
+        }
+
+        log.add(change.getFullDocument());
+      }
+    }
+
+    final MongoCollection<Document> collection = db.getCollection("test");
+    collection.insertOne(new Document("_id", "test"));
+
+    defer.close(listenerFactory.onChangeTo(collection, new TakesTwoTries(), earliestOplogEntry));
+
+    Awaitility.await()
+        .atMost(Duration.ofSeconds(50))
+        .until(
+            () -> log,
+            contains(equalTo(new Document(ImmutableMap.of("_id", "test")))));
+  }
+
+  static class SimulatedException extends RuntimeException {
+
   }
 
   static class EverySecond implements MongoChangeListenerFactory.RefreshStrategy {
