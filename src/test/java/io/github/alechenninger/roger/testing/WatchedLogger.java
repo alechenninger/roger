@@ -19,12 +19,13 @@ import org.slf4j.LoggerFactory;
 import org.slf4j.Marker;
 
 public class WatchedLogger implements BeforeEachCallback {
-  private final Logger logger;
+
   private final ListAppender<ILoggingEvent> listener;
 
-  public WatchedLogger(String listenTo) {
-    Objects.requireNonNull(listenTo, "listenTo");
-    logger = (Logger) LoggerFactory.getLogger(listenTo);
+  public WatchedLogger(String name) {
+    Objects.requireNonNull(name, "name");
+
+    Logger logger = (Logger) LoggerFactory.getLogger(name);
     listener = new ListAppender<>();
     listener.setContext(logger.getLoggerContext());
     listener.start();
@@ -32,8 +33,8 @@ public class WatchedLogger implements BeforeEachCallback {
     logger.addAppender(listener);
   }
 
-  public WatchedLogger(Class listenTo) {
-    this(listenTo.getName());
+  public WatchedLogger(Class clazz) {
+    this(clazz.getName());
   }
 
   public List<ILoggingEvent> events() {

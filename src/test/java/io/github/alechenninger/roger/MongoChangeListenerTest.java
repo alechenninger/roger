@@ -54,7 +54,7 @@ class MongoChangeListenerTest {
   // Each test will invalidate the change stream for its database, so use a new database each time.
   String testDb = Long.toUnsignedString(random.nextLong(), Character.MAX_RADIX);
   MongoDatabase db = defer.that(mongo.getDatabase(testDb), MongoDatabase::drop);
-  ScheduledRefresh refreshStrategy = defer.close(ScheduledRefresh.every(Duration.ofSeconds(1)));
+  ScheduledRefresh refreshStrategy = defer.close(ScheduledRefresh.every(Duration.ofMillis(100)));
   MongoListenerLockService lockService = new MongoListenerLockService(
       Clock.systemUTC(),
       db.getCollection("listenerLocks", BsonDocument.class),
@@ -63,7 +63,7 @@ class MongoChangeListenerTest {
   MongoChangeListenerFactory listenerFactory = new MongoChangeListenerFactory(
       Duration.ofMinutes(5),
       refreshStrategy,
-      Duration.ofSeconds(1),
+      Duration.ofMillis(200),
       lockService);
   TimestampProvider earliestOplogEntry = new EarliestOplogEntry(mongo.client());
 
@@ -176,7 +176,7 @@ class MongoChangeListenerTest {
     MongoChangeListenerFactory listenerFactory = new MongoChangeListenerFactory(
         Duration.ofMinutes(5),
         new JustOnce(),
-        Duration.ofSeconds(1),
+        Duration.ofMillis(100),
         lockService);
 
     List<Document> log = new ArrayList<>();
