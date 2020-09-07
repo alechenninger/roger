@@ -21,7 +21,7 @@ import com.mongodb.client.model.changestream.ChangeStreamDocument;
 import com.mongodb.client.result.UpdateResult;
 import io.github.alechenninger.roger.MongoChangeListenerFactory.RefreshStrategy;
 import io.github.alechenninger.roger.testing.Defer;
-import io.github.alechenninger.roger.testing.LogListener;
+import io.github.alechenninger.roger.testing.WatchedLogger;
 import io.github.alechenninger.roger.testing.MongoDb;
 import java.io.IOException;
 import java.time.Clock;
@@ -30,7 +30,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
 import java.util.UUID;
-import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.stream.Collectors;
@@ -48,7 +47,7 @@ class MongoChangeListenerTest {
   static Defer defer = new Defer();
 
   @RegisterExtension
-  static LogListener listenerLogs = new LogListener(MongoChangeListener.class);
+  static WatchedLogger listenerLogs = new WatchedLogger(MongoChangeListener.class);
 
   static Random random = new Random();
 

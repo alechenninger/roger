@@ -18,11 +18,11 @@ import org.junit.jupiter.api.extension.ExtensionContext;
 import org.slf4j.LoggerFactory;
 import org.slf4j.Marker;
 
-public class LogListener implements BeforeEachCallback {
+public class WatchedLogger implements BeforeEachCallback {
   private final Logger logger;
   private final ListAppender<ILoggingEvent> listener;
 
-  public LogListener(String listenTo) {
+  public WatchedLogger(String listenTo) {
     Objects.requireNonNull(listenTo, "listenTo");
     logger = (Logger) LoggerFactory.getLogger(listenTo);
     listener = new ListAppender<>();
@@ -32,11 +32,11 @@ public class LogListener implements BeforeEachCallback {
     logger.addAppender(listener);
   }
 
-  public LogListener(Class listenTo) {
+  public WatchedLogger(Class listenTo) {
     this(listenTo.getName());
   }
 
-  public List<ILoggingEvent> logs() {
+  public List<ILoggingEvent> events() {
     if (listener == null) {
       throw new IllegalStateException("logs() called outside of test");
     }
@@ -44,25 +44,25 @@ public class LogListener implements BeforeEachCallback {
   }
 
   public List<String> messages() {
-    return logs().stream().map(ILoggingEvent::getMessage).collect(Collectors.toList());
+    return events().stream().map(ILoggingEvent::getMessage).collect(Collectors.toList());
   }
 
   public List<String> messages(Level level) {
-    return logs().stream()
+    return events().stream()
         .filter(l -> l.getLevel().isGreaterOrEqual(level))
         .map(ILoggingEvent::getMessage)
         .collect(Collectors.toList());
   }
 
   public List<String> messagesMarked(Marker marker) {
-    return logs().stream()
+    return events().stream()
         .filter(l -> l.getMarker().equals(marker))
         .map(ILoggingEvent::getMessage)
         .collect(Collectors.toList());
   }
 
   public boolean contains(Marker marker) {
-    return logs().stream().anyMatch(l -> marker.equals(l.getMarker()));
+    return events().stream().anyMatch(l -> marker.equals(l.getMarker()));
   }
 
   @Override
