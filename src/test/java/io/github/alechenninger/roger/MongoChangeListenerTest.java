@@ -175,8 +175,9 @@ class MongoChangeListenerTest {
   void continuesListeningAfterCursorStopsWaitingWithoutWaitingForRefresh() {
     MongoChangeListenerFactory listenerFactory = new MongoChangeListenerFactory(
         Duration.ofMinutes(5),
+        // Never refresh after first, so we can be sure lock refresh isn't covering up for us
         new JustOnce(),
-        Duration.ofMillis(100),
+        /* max wait */ Duration.ofMillis(100),
         lockService);
 
     List<Document> log = new ArrayList<>();
