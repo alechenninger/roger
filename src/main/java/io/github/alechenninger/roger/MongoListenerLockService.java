@@ -63,6 +63,10 @@ public class MongoListenerLockService {
         Duration.ofMinutes(5));
   }
 
+  public Duration leaseTime() {
+    return leaseTime;
+  }
+
   /**
    * Attempts to acquire the lock for the current listener ID, or refresh a lock already held by
    * the current listener ID (extending its lease). If the lock is acquired, a
@@ -96,17 +100,24 @@ public class MongoListenerLockService {
                   .returnDocument(ReturnDocument.AFTER)
                   .upsert(true));
 
-      log.debug("Locked resource={} listenerId={}", resource, listenerId);
+      if (found == null) {
+        throw new IllegalStateException(
+            "No lock document upserted, but none found. This should never happen.");
+      }
 
-      return Optional.ofNullable(found)
-          .map(it -> new ListenerLock(
-              it.getNumber("version"),
-              it.getDocument("resumeToken", null)));
+      final ListenerLock lock = new ListenerLock(
+          found.getNumber("version"),
+          found.getDocument("resumeToken", null));
+
+      log.debug("Lock acquired or refreshed. resource={} listenerId={} lockVersion={} resumeToken={}",
+          resource, listenerId, lock.version(), lock.resumeToken());
+
+      return Optional.of(lock);
     } catch (MongoCommandException e) {
       final ErrorCategory errorCategory = ErrorCategory.fromErrorCode(e.getErrorCode());
 
       if (errorCategory.equals(DUPLICATE_KEY)) {
-        log.debug("Lost race to lock resource={} listenerId={}", resource, listenerId);
+        log.debug("Lock owned by another listener. resource={} myListenerId={}", resource, listenerId);
         return Optional.empty();
       }
 
@@ -129,7 +140,7 @@ public class MongoListenerLockService {
                 set("resumeToken", resumeToken)));
 
     if (result.getMatchedCount() == 0) {
-      throw new LostLockException();
+      throw new LostLockException(resource, listenerId);
     }
 
     log.debug("Committed new resume token for lock. resource={} listenerId={} resumeToken={}",
