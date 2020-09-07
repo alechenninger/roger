@@ -107,7 +107,7 @@ public class MongoChangeListener<T> implements Closeable {
    * @return {@code true} if a listener was currently active when this method was called
    */
   private synchronized boolean stopListening() {
-    if (listener != null && !listener.isDone()) {
+    if (isListening()) {
       listener.cancel(true);
       return true;
     }

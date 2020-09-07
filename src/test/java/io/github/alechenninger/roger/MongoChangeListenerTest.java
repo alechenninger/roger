@@ -379,6 +379,7 @@ class MongoChangeListenerTest {
    * </ul>
    */
   private static class IdempotentFencedLogWithSimulatedDelays implements ChangeConsumer<Document> {
+
     private final List<Document> log;
     private long lastToken;
 
@@ -391,13 +392,15 @@ class MongoChangeListenerTest {
     public void accept(ChangeStreamDocument<Document> change, Long tok) {
       try {
         Thread.sleep(random.nextInt(100));
-      } catch (InterruptedException ignored) {}
+      } catch (InterruptedException ignored) {
+      }
 
       synchronized (log) {
         if (tok >= lastToken) {
           lastToken = tok;
           // Changes must be idempotent regardless of lock ownership
           if (!log.isEmpty() && log.get(log.size() - 1).equals(change.getFullDocument())) {
+            LOG.info("Detected retry");
             return;
           }
           log.add(change.getFullDocument());
@@ -408,7 +411,8 @@ class MongoChangeListenerTest {
 
       try {
         Thread.sleep(random.nextInt(100));
-      } catch (InterruptedException ignored) {}
+      } catch (InterruptedException ignored) {
+      }
     }
   }
 }
