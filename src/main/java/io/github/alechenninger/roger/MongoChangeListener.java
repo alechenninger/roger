@@ -11,11 +11,6 @@ import com.mongodb.client.ChangeStreamIterable;
 import com.mongodb.client.MongoChangeStreamCursor;
 import com.mongodb.client.MongoCollection;
 import com.mongodb.client.model.changestream.ChangeStreamDocument;
-import org.bson.BsonDocument;
-import org.bson.BsonTimestamp;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import java.io.Closeable;
 import java.io.IOException;
 import java.time.Duration;
@@ -26,6 +21,12 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.function.BiConsumer;
+import org.bson.BsonDocument;
+import org.bson.BsonTimestamp;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.slf4j.Marker;
+import org.slf4j.MarkerFactory;
 
 public class MongoChangeListener<T> implements Closeable {
   private final MongoListenerLockService lockService;
@@ -35,6 +36,10 @@ public class MongoChangeListener<T> implements Closeable {
   private final MongoCollection<T> collection;
   private final ExecutorService executor = Executors.newSingleThreadExecutor();
   private final TimestampProvider initialStartTime;
+
+  public static final Marker CURSOR_OPENING = MarkerFactory.getMarker("listener.cursor_open");
+  public static final Marker ABORTED = MarkerFactory.getMarker("listener.aborted");
+  public static final Marker CURSOR_MAX_WAIT = MarkerFactory.getMarker("listener.cursor_max_wait");
 
   private boolean closed = false;
 
@@ -213,14 +218,20 @@ public class MongoChangeListener<T> implements Closeable {
         // callback must participate in locking to truly ensure order e.g. with fencing tokens.
         while (isListening()) {
           try {
+            log.debug(CURSOR_OPENING, "Opening change stream cursor");
+
             ChangeStreamDocument<T> change = cursor.tryNext();
 
             if (!isListening()) {
-              log.info("Listener has been stopped; aborting change processing");
+              log.info(ABORTED, "Listener has been stopped; aborting change processing");
               break;
             }
 
-            if (change == null) continue;
+            if (change == null) {
+              log.debug(CURSOR_MAX_WAIT, "No change. Cursor gave up waiting, but we still believe "
+                  + "we have a lock, so will keep listening.");
+              continue;
+            }
 
             log.debug("Accepting change {}", change);
 
@@ -243,11 +254,12 @@ public class MongoChangeListener<T> implements Closeable {
           }
         }
 
-        log.info("Stopping active listener...");
+        log.info("Listener stopped. Closing cursor...");
 
         cursor.close();
       } catch (Exception e) {
-        log.error("Uncaught exception while listening to change", e);
+        log.error("Uncaught exception while attempting to listen to change. "
+            + "Listener not running.", e);
       }
     }
   }

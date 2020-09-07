@@ -19,14 +19,20 @@ import com.mongodb.client.model.Filters;
 import com.mongodb.client.model.Updates;
 import com.mongodb.client.model.changestream.ChangeStreamDocument;
 import com.mongodb.client.result.UpdateResult;
+import io.github.alechenninger.roger.MongoChangeListenerFactory.RefreshStrategy;
 import io.github.alechenninger.roger.testing.Defer;
+import io.github.alechenninger.roger.testing.LogListener;
 import io.github.alechenninger.roger.testing.MongoDb;
+import java.io.IOException;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
 import java.util.UUID;
+import java.util.concurrent.Executor;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.stream.Collectors;
 import org.awaitility.Awaitility;
 import org.bson.BsonDocument;
@@ -41,21 +47,25 @@ class MongoChangeListenerTest {
   @RegisterExtension
   static Defer defer = new Defer();
 
+  @RegisterExtension
+  static LogListener listenerLogs = new LogListener(MongoChangeListener.class);
+
   static Random random = new Random();
 
   // Each test will invalidate the change stream for its database, so use a new database each time.
   String testDb = Long.toUnsignedString(random.nextLong(), Character.MAX_RADIX);
   MongoDatabase db = defer.that(mongo.getDatabase(testDb), MongoDatabase::drop);
   ScheduledRefresh refreshStrategy = defer.close(ScheduledRefresh.every(Duration.ofSeconds(1)));
+  MongoListenerLockService lockService = new MongoListenerLockService(
+      Clock.systemUTC(),
+      db.getCollection("listenerLocks", BsonDocument.class),
+      "test",
+      Duration.ofMinutes(5));
   MongoChangeListenerFactory listenerFactory = new MongoChangeListenerFactory(
       Duration.ofMinutes(5),
       refreshStrategy,
       Duration.ofSeconds(1),
-      new MongoListenerLockService(
-          Clock.systemUTC(),
-          db.getCollection("listenerLocks", BsonDocument.class),
-          "test",
-          Duration.ofMinutes(5)));
+      lockService);
   TimestampProvider earliestOplogEntry = new EarliestOplogEntry(mongo.client());
 
   @Test
@@ -162,6 +172,29 @@ class MongoChangeListenerTest {
             contains(equalTo(new Document(ImmutableMap.of("_id", "test")))));
   }
 
+  @Test
+  void continuesListeningAfterCursorStopsWaitingWithoutWaitingForRefresh() {
+    MongoChangeListenerFactory listenerFactory = new MongoChangeListenerFactory(
+        Duration.ofMinutes(5),
+        new JustOnce(),
+        Duration.ofSeconds(1),
+        lockService);
+
+    List<Document> log = new ArrayList<>();
+    ChangeConsumer<Document> logIt = (change, tok) -> log.add(change.getFullDocument());
+    final MongoCollection<Document> collection = db.getCollection("test");
+
+    defer.close(listenerFactory.onChangeTo(collection, logIt, earliestOplogEntry));
+
+    Awaitility.await()
+        .atMost(Duration.ofSeconds(5))
+        .until(() -> listenerLogs.contains(MongoChangeListener.CURSOR_MAX_WAIT));
+
+    collection.insertOne(new Document("_id", "test"));
+
+    Awaitility.await().atMost(Duration.ofSeconds(5)).until(() -> log, hasSize(1));
+  }
+
   static class SimulatedException extends RuntimeException {
 
   }
@@ -221,6 +254,20 @@ class MongoChangeListenerTest {
           "id='" + id + '\'' +
           ", foo='" + foo + '\'' +
           '}';
+    }
+  }
+
+  private static class JustOnce implements RefreshStrategy {
+    private final ExecutorService executor = Executors.newSingleThreadExecutor();
+
+    @Override
+    public void scheduleInBackground(Runnable refresh, Duration leaseTime) {
+      executor.execute(refresh);
+    }
+
+    @Override
+    public void close() throws IOException {
+      executor.shutdown();
     }
   }
 }
