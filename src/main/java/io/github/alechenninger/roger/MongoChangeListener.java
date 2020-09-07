@@ -37,8 +37,6 @@ public class MongoChangeListener<T> implements Closeable {
   private final ExecutorService executor = Executors.newSingleThreadExecutor();
   private final TimestampProvider initialStartTime;
 
-  public static final Marker CURSOR_OPENING = MarkerFactory.getMarker("listener.cursor_open");
-  public static final Marker ABORTED = MarkerFactory.getMarker("listener.aborted");
   public static final Marker CURSOR_MAX_WAIT = MarkerFactory.getMarker("listener.cursor_max_wait");
 
   private boolean closed = false;
@@ -218,12 +216,12 @@ public class MongoChangeListener<T> implements Closeable {
         // callback must participate in locking to truly ensure order e.g. with fencing tokens.
         while (isListening()) {
           try {
-            log.debug(CURSOR_OPENING, "Opening change stream cursor");
+            log.debug("Opening change stream cursor");
 
             ChangeStreamDocument<T> change = cursor.tryNext();
 
             if (!isListening()) {
-              log.info(ABORTED, "Listener has been stopped; aborting change processing");
+              log.info("Listener has been stopped; aborting change processing");
               break;
             }
 
