@@ -140,8 +140,7 @@ public class MongoListenerLockService {
     return or(
         eq("expiresAt", null),
         not(exists("expiresAt")),
-        lte("expiresAt", clock.instant())
-    );
+        lte("expiresAt", clock.instant()));
   }
 
   private Document sameIfRefreshOtherwiseIncrement() {

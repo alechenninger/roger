@@ -21,23 +21,18 @@ import com.mongodb.client.model.changestream.ChangeStreamDocument;
 import com.mongodb.client.result.UpdateResult;
 import io.github.alechenninger.roger.testing.Defer;
 import io.github.alechenninger.roger.testing.MongoDb;
-import org.awaitility.Awaitility;
-import org.bson.BsonDocument;
-import org.bson.Document;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.RegisterExtension;
-
-import java.io.IOException;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
 import java.util.UUID;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
+import org.awaitility.Awaitility;
+import org.bson.BsonDocument;
+import org.bson.Document;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.RegisterExtension;
 
 class MongoChangeListenerTest {
   @RegisterExtension
@@ -51,7 +46,7 @@ class MongoChangeListenerTest {
   // Each test will invalidate the change stream for its database, so use a new database each time.
   String testDb = Long.toUnsignedString(random.nextLong(), Character.MAX_RADIX);
   MongoDatabase db = defer.that(mongo.getDatabase(testDb), MongoDatabase::drop);
-  EverySecond refreshStrategy = defer.close(new EverySecond());
+  ScheduledRefresh refreshStrategy = defer.close(ScheduledRefresh.every(Duration.ofSeconds(1)));
   MongoChangeListenerFactory listenerFactory = new MongoChangeListenerFactory(
       Duration.ofMinutes(5),
       refreshStrategy,
@@ -132,7 +127,7 @@ class MongoChangeListenerTest {
     defer.close(listenerFactory.onChangeTo(collection, logIt, earliestOplogEntry));
 
     Awaitility.await()
-        .atMost(Duration.ofSeconds(50))
+        .atMost(Duration.ofSeconds(5))
         .until(
             () -> log.stream().skip(1).collect(Collectors.toList()),
             contains(equalTo(new Document(ImmutableMap.of("_id", "test", "foo", "bar")))));
@@ -161,7 +156,7 @@ class MongoChangeListenerTest {
     defer.close(listenerFactory.onChangeTo(collection, new TakesTwoTries(), earliestOplogEntry));
 
     Awaitility.await()
-        .atMost(Duration.ofSeconds(50))
+        .atMost(Duration.ofSeconds(5))
         .until(
             () -> log,
             contains(equalTo(new Document(ImmutableMap.of("_id", "test")))));
@@ -169,26 +164,6 @@ class MongoChangeListenerTest {
 
   static class SimulatedException extends RuntimeException {
 
-  }
-
-  static class EverySecond implements MongoChangeListenerFactory.RefreshStrategy {
-    final ScheduledExecutorService executor = Executors.newSingleThreadScheduledExecutor();
-
-    @Override
-    public void scheduleInBackground(Runnable refresh, Duration leaseTime) {
-      executor.scheduleAtFixedRate(refresh, 0, 1, TimeUnit.SECONDS);
-    }
-
-    @Override
-    public void close() throws IOException {
-      executor.shutdown();
-      try {
-        executor.awaitTermination(5, TimeUnit.SECONDS);
-      } catch (InterruptedException ignored) {
-        // ignored
-      }
-      executor.shutdownNow();
-    }
   }
 
   public static class TestDoc {
